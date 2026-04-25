@@ -1,73 +1,113 @@
-# React + TypeScript + Vite
+# Chronos UI
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+A production-style React + TypeScript front-end for the Chronos job-scheduling platform. It implements registration, authentication, job lifecycle management, execution tracking, and notifications against the Chronos REST API gateway.
 
-Currently, two official plugins are available:
+## Tech Stack
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+- **Framework**: React 19 + TypeScript
+- **Bundler / Dev Server**: Vite 8
+- **Routing**: react-router-dom v7 (`createBrowserRouter`)
+- **Server State**: @tanstack/react-query v5
+- **Client State**: Zustand (auth session, persisted to `localStorage`)
+- **Forms**: react-hook-form + zod (`@hookform/resolvers`)
+- **HTTP**: axios with JWT injection + idempotency-key support
 
-## React Compiler
+## Features
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+- User registration and JWT-based login
+- Auth-guarded routes (auto-redirect unauthenticated users to `/login`)
+- Dashboard KPIs scoped to the current user (total / active / failed)
+- Create one-time and recurring jobs (EMAIL / WEBHOOK), with payload validation
+- Filter jobs by status (`SCHEDULED`, `EXECUTING`, `COMPLETED`, `FAILED`, `CANCELLED`)
+- Job details view with reschedule and cancel actions
+- Executions list with auto-refresh while a job is active
+- Notifications feed page
+- Gateway health badge in the header
 
-## Expanding the ESLint configuration
+## Project Structure
 
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
-
-```js
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-
-      // Remove tseslint.configs.recommended and replace with this
-      tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      tseslint.configs.stylisticTypeChecked,
-
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+```
+src/
+  app/                    # Providers + router setup
+  api/                    # Typed API client modules (axios)
+  components/             # Layout + shared UI (StatusBadge, ErrorBanner, EmptyState)
+  features/
+    auth/                 # Auth store, login/register pages, AuthGuard
+    dashboard/            # Dashboard page + KPI cards
+    jobs/                 # Jobs list, create form, details, reschedule modal
+    executions/           # Execution list + details panel
+    notifications/        # Notifications feed
+  lib/                    # Constants, date helpers, enums
+  types/                  # API DTO types
 ```
 
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
+## Getting Started
 
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
+### Prerequisites
 
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs['recommended-typescript'],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended,
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+- Node.js 20+ (tested on 23.x)
+- npm 10+
+
+### Install
+
+```bash
+npm install
 ```
+
+### Run locally
+
+```bash
+npm run dev
+```
+
+App is served at `http://localhost:5173/`.
+
+### Build for production
+
+```bash
+npm run build
+npm run preview   # optional: serve the production build locally
+```
+
+### Lint
+
+```bash
+npm run lint
+```
+
+## Backend Configuration
+
+The dev server proxies `/api/*` to the Chronos gateway (configured in [vite.config.ts](vite.config.ts)), so requests stay same-origin in development and avoid CORS.
+
+To point at a different backend, create `.env.local`:
+
+```
+VITE_API_BASE_URL=https://your-gateway.example.com
+```
+
+When `VITE_API_BASE_URL` is unset, requests go through the dev proxy.
+
+The gateway and endpoints are documented in [../VM_API_REFERENCE.md](../VM_API_REFERENCE.md).
+
+## Auth Flow
+
+1. `POST /api/v1/auth/register` creates the user.
+2. `POST /api/v1/auth/login` returns a JWT (`accessToken`).
+3. The token + user info are persisted via Zustand (`localStorage` key: `chronos.auth`).
+4. axios attaches `Authorization: Bearer <token>` to every request.
+5. On `401`, the session is cleared and the user is redirected to `/login`.
+
+## Notable Implementation Details
+
+- **Date handling** — the backend returns timestamps as numeric epoch seconds (e.g. `1777523400.0`). The formatter in [src/lib/date.ts](src/lib/date.ts) detects numeric values and converts them to milliseconds before formatting; types in [src/types/api.ts](src/types/api.ts) accept `string | number` for date fields.
+- **Idempotency keys** — `createJob` automatically attaches a generated `Idempotency-Key` header so retries do not duplicate jobs.
+- **Auth scope** — there is no global "all jobs" endpoint in the API contract; the jobs list is always scoped to the authenticated user.
+
+## Scripts
+
+| Command | Description |
+| --- | --- |
+| `npm run dev` | Start the Vite dev server with backend proxy |
+| `npm run build` | Type-check (`tsc -b`) and produce a production build in `dist/` |
+| `npm run preview` | Serve the production build locally |
+| `npm run lint` | Run ESLint over the codebase |
